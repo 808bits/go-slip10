@@ -1,6 +1,7 @@
 package slip10
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -82,8 +83,7 @@ func NewMasterNode(seed []byte, curve Curve) (*Node, error) {
 }
 
 func isPrivateVersion(version []byte) bool {
-	return (version[0] == 0x04 && version[1] == 0x88 && version[2] == 0xAD && version[3] == 0xE4) ||
-		(version[0] == 0x04 && version[1] == 0x35 && version[2] == 0x83 && version[3] == 0x94)
+	return bytes.Equal(version, VersionMainPrivate) || bytes.Equal(version, VersionTestPrivate)
 }
 
 func parseKeyData(actualKeyData []byte, isPrivate bool, curve Curve) (privKey, pubKey []byte, err error) {
@@ -267,16 +267,8 @@ func ParsePath(path string) ([]uint32, error) {
 // Wipe overwrites the private key and chain code with zeros to protect sensitive data in memory.
 // It is recommended to call this method when the Node is no longer needed.
 func (n *Node) Wipe() {
-	if n.PrivKey != nil {
-		for i := range n.PrivKey {
-			n.PrivKey[i] = 0
-		}
-	}
-	if n.ChainCode != nil {
-		for i := range n.ChainCode {
-			n.ChainCode[i] = 0
-		}
-	}
+	clear(n.PrivKey)
+	clear(n.ChainCode)
 }
 
 // serialize writes the node data to a 78-byte buffer and returns the Base58Check encoding.
@@ -330,6 +322,32 @@ func (n *Node) Fingerprint() []byte {
 	h.Write(sha[:])
 	hash := h.Sum(nil)
 	return hash[:4]
+}
+
+// Neuter returns a new public-only node derived from this node.
+// The returned node cannot be used for private key operations.
+// Returns nil if the node is already public-only.
+func (n *Node) Neuter() *Node {
+	if !n.IsPrivate {
+		return nil
+	}
+
+	version := VersionMainPublic
+	if bytes.Equal(n.Version, VersionTestPrivate) {
+		version = VersionTestPublic
+	}
+
+	return &Node{
+		Curve:     n.Curve,
+		IsPrivate: false,
+		PrivKey:   nil,
+		PubKey:    n.PubKey,
+		ChainCode: n.ChainCode,
+		Depth:     n.Depth,
+		ParentFP:  n.ParentFP,
+		Index:     n.Index,
+		Version:   version,
+	}
 }
 
 // PublicKey returns the public key associated with this node.

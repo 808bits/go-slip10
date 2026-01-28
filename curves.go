@@ -1,13 +1,13 @@
 package slip10
 
 import (
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/sha512"
+	"encoding/binary"
 	"errors"
 	"math/big"
-
-	"crypto/ed25519"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"golang.org/x/crypto/curve25519"
@@ -118,10 +118,7 @@ func deriveWeierstrassPublicChild(pubKey, chainCode []byte, index uint32, curve 
 
 	var data [37]byte
 	copy(data[:], pubKey)
-	data[33] = byte(index >> 24)
-	data[34] = byte(index >> 16)
-	data[35] = byte(index >> 8)
-	data[36] = byte(index)
+	binary.BigEndian.PutUint32(data[33:], index)
 
 	h := hmac.New(sha512.New, chainCode)
 	h.Write(data[:])
@@ -188,10 +185,7 @@ func (c *ed25519Curve) DerivePrivateChild(privKey, chainCode []byte, index uint3
 	var data [37]byte
 	data[0] = 0x00
 	copy(data[1:], privKey)
-	data[33] = byte(index >> 24)
-	data[34] = byte(index >> 16)
-	data[35] = byte(index >> 8)
-	data[36] = byte(index)
+	binary.BigEndian.PutUint32(data[33:], index)
 
 	h := hmac.New(sha512.New, chainCode)
 	h.Write(data[:])
@@ -236,10 +230,7 @@ func (c *curve25519Curve) DerivePrivateChild(privKey, chainCode []byte, index ui
 	var data [37]byte
 	data[0] = 0x00
 	copy(data[1:], privKey)
-	data[33] = byte(index >> 24)
-	data[34] = byte(index >> 16)
-	data[35] = byte(index >> 8)
-	data[36] = byte(index)
+	binary.BigEndian.PutUint32(data[33:], index)
 
 	h := hmac.New(sha512.New, chainCode)
 	h.Write(data[:])
@@ -248,10 +239,14 @@ func (c *curve25519Curve) DerivePrivateChild(privKey, chainCode []byte, index ui
 }
 
 func (c *curve25519Curve) PublicKey(privKey []byte) []byte {
-	pub, err := curve25519.X25519(privKey, curve25519.Basepoint)
-	if err != nil {
-		panic("curve25519: invalid private key: " + err.Error())
-	}
+	// Clamp the private key per RFC 7748 to ensure valid scalar
+	var scalar [32]byte
+	copy(scalar[:], privKey)
+	scalar[0] &= 248
+	scalar[31] &= 127
+	scalar[31] |= 64
+
+	pub, _ := curve25519.X25519(scalar[:], curve25519.Basepoint)
 	res := make([]byte, 33)
 	res[0] = 0x00
 	copy(res[1:], pub)
@@ -287,10 +282,7 @@ func deriveWeierstrassChild(privKey, chainCode []byte, index uint32, n *big.Int,
 		pubKey := pubKeyFunc(privKey)
 		copy(data[:], pubKey)
 	}
-	data[33] = byte(index >> 24)
-	data[34] = byte(index >> 16)
-	data[35] = byte(index >> 8)
-	data[36] = byte(index)
+	binary.BigEndian.PutUint32(data[33:], index)
 
 	h := hmac.New(sha512.New, chainCode)
 	h.Write(data[:])

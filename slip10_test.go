@@ -11,6 +11,58 @@ import (
 	"github.com/meehow/go-slip10/base58"
 )
 
+func TestNeuter(t *testing.T) {
+	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
+
+	t.Run("Mainnet", func(t *testing.T) {
+		master, _ := NewMasterNode(seed, NewSecp256k1())
+		neutered := master.Neuter()
+
+		if neutered == nil {
+			t.Fatal("Neuter returned nil")
+		}
+		if neutered.IsPrivate {
+			t.Error("Neutered node should not be private")
+		}
+		if neutered.PrivKey != nil {
+			t.Error("Neutered node should have nil PrivKey")
+		}
+		if !bytes.Equal(neutered.PubKey, master.PubKey) {
+			t.Error("Public keys should match")
+		}
+		if !bytes.Equal(neutered.Version, VersionMainPublic) {
+			t.Errorf("Expected mainnet public version, got %x", neutered.Version)
+		}
+
+		// Derived public key should match
+		childPriv, _ := master.Derive(0)
+		childPub, _ := neutered.Derive(0)
+		if !bytes.Equal(childPub.PubKey, childPriv.PubKey) {
+			t.Error("Derived public keys should match")
+		}
+	})
+
+	t.Run("Testnet", func(t *testing.T) {
+		master, _ := NewMasterNode(seed, NewSecp256k1())
+		master.Version = VersionTestPrivate
+		neutered := master.Neuter()
+
+		if !bytes.Equal(neutered.Version, VersionTestPublic) {
+			t.Errorf("Expected testnet public version, got %x", neutered.Version)
+		}
+	})
+
+	t.Run("Already public", func(t *testing.T) {
+		master, _ := NewMasterNode(seed, NewSecp256k1())
+		neutered := master.Neuter()
+		doubleNeutered := neutered.Neuter()
+
+		if doubleNeutered != nil {
+			t.Error("Neuter on public node should return nil")
+		}
+	})
+}
+
 type slipTestCase struct {
 	path              string
 	parentFingerprint string
@@ -591,9 +643,11 @@ func TestNewMasterNodeAllCurves(t *testing.T) {
 		node, err := NewMasterNode(seed, curve)
 		if err != nil {
 			t.Errorf("NewMasterNode failed for %s: %v", curve.Name(), err)
+			continue
 		}
 		if node == nil {
 			t.Errorf("node is nil for %s", curve.Name())
+			continue
 		}
 		if !node.IsPrivate {
 			t.Errorf("expected private node for %s", curve.Name())
