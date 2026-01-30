@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/meehow/go-slip10/base58"
+	"github.com/meehow/go-slip10/bech32"
 	"golang.org/x/crypto/ripemd160" //lint:ignore SA1019 Required by BIP-32 spec for fingerprinting
 )
 
@@ -124,42 +125,99 @@ func validateNodeFields(depth byte, index uint32, parentFP []byte) error {
 
 // NewNodeFromExtendedKey creates a node from serialized extended key (xpub/xpriv).
 func NewNodeFromExtendedKey(extendedKey string, curve Curve) (*Node, error) {
+	// Try Base58Check first (standard SLIP-10/BIP-32)
 	payload, err := base58.CheckDecode(extendedKey)
-	if err != nil {
-		return nil, err
-	}
-	if len(payload) != totalLen {
-		return nil, errors.New("invalid extended key length")
+	if err == nil {
+		if len(payload) != totalLen {
+			return nil, errors.New("invalid extended key length")
+		}
+
+		version := payload[versionOffset:depthOffset]
+		depth := payload[depthOffset]
+		parentFP := payload[parentFPOffset:indexOffset]
+		index := uint32(payload[indexOffset])<<24 | uint32(payload[indexOffset+1])<<16 | uint32(payload[indexOffset+2])<<8 | uint32(payload[indexOffset+3])
+		chainCode := payload[chainCodeOffset:keyOffset]
+		actualKeyData := payload[keyOffset:]
+
+		isPrivate := isPrivateVersion(version)
+		privKey, pubKey, err := parseKeyData(actualKeyData, isPrivate, curve)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := validateNodeFields(depth, index, parentFP); err != nil {
+			return nil, err
+		}
+
+		return &Node{
+			Curve:     curve,
+			IsPrivate: isPrivate,
+			PrivKey:   privKey,
+			PubKey:    pubKey,
+			ChainCode: chainCode,
+			Depth:     depth,
+			ParentFP:  parentFP,
+			Index:     index,
+			Version:   version,
+		}, nil
 	}
 
-	version := payload[versionOffset:depthOffset]
-	depth := payload[depthOffset]
-	parentFP := payload[parentFPOffset:indexOffset]
-	index := uint32(payload[indexOffset])<<24 | uint32(payload[indexOffset+1])<<16 | uint32(payload[indexOffset+2])<<8 | uint32(payload[indexOffset+3])
-	chainCode := payload[chainCodeOffset:keyOffset]
-	actualKeyData := payload[keyOffset:]
+	// Try Bech32 (Cardano / Ed25519-BIP32)
+	hrp, data, err := bech32.Decode(extendedKey)
+	if err == nil {
+		if curve.Name() != "ed25519-bip32" {
+			return nil, errors.New("bech32 encoding is only supported for ed25519-bip32 curve")
+		}
 
-	isPrivate := isPrivateVersion(version)
-	privKey, pubKey, err := parseKeyData(actualKeyData, isPrivate, curve)
-	if err != nil {
-		return nil, err
+		// Convert 5-bit groups back to 8-bit bytes
+		payload, err := bech32.ConvertBits(data, 5, 8, false)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert bech32 bits: %v", err)
+		}
+
+		var isPrivate bool
+		var privKey, pubKey, chainCode []byte
+
+		if hrp == "xprv" {
+			// Cardano xprv payload: 96 bytes (64 bytes key + 32 bytes chain code)
+			if len(payload) != 96 {
+				return nil, fmt.Errorf("invalid bech32 xval length for xprv: expected 96, got %d", len(payload))
+			}
+			isPrivate = true
+			privKey = payload[:64]
+			chainCode = payload[64:]
+			pubKey = curve.PublicKey(privKey)
+		} else if hrp == "xpub" {
+			// Cardano xpub payload: 64 bytes (32 bytes public key + 32 bytes chain code)
+			if len(payload) != 64 {
+				return nil, fmt.Errorf("invalid bech32 xval length for xpub: expected 64, got %d", len(payload))
+			}
+			isPrivate = false
+			rawPubKey := payload[:32]
+			chainCode = payload[32:]
+
+			// Add 0x00 prefix for internal format
+			pubKey = make([]byte, 33)
+			pubKey[0] = 0x00
+			copy(pubKey[1:], rawPubKey)
+		} else {
+			return nil, fmt.Errorf("unknown bech32 hrp: %s", hrp)
+		}
+
+		return &Node{
+			Curve:     curve,
+			IsPrivate: isPrivate,
+			PrivKey:   privKey,
+			PubKey:    pubKey,
+			ChainCode: chainCode,
+			Depth:     0,               // Cardano Bech32 doesn't encode depth
+			ParentFP:  zeroFingerprint, // Cardano Bech32 doesn't encode parent FP
+			Index:     0,               // Cardano Bech32 doesn't encode index
+			Version:   nil,
+		}, nil
 	}
 
-	if err := validateNodeFields(depth, index, parentFP); err != nil {
-		return nil, err
-	}
-
-	return &Node{
-		Curve:     curve,
-		IsPrivate: isPrivate,
-		PrivKey:   privKey,
-		PubKey:    pubKey,
-		ChainCode: chainCode,
-		Depth:     depth,
-		ParentFP:  parentFP,
-		Index:     index,
-		Version:   version,
-	}, nil
+	return nil, errors.New("invalid extended key encoding (neither base58 nor bech32)")
 }
 
 // Derive derives a child node at the given index.
@@ -292,6 +350,27 @@ func (n *Node) XPriv() string {
 	if !n.IsPrivate {
 		return ""
 	}
+
+	// Cardano (Ed25519-BIP32) Special Case: Use Bech32
+	if n.Curve.Name() == "ed25519-bip32" {
+		// Payload: 64 bytes key + 32 bytes chain code = 96 bytes
+		payload := make([]byte, 96)
+		copy(payload[:64], n.PrivKey)
+		copy(payload[64:], n.ChainCode)
+
+		// Convert to 5-bit groups
+		data, err := bech32.ConvertBits(payload, 8, 5, true)
+		if err != nil {
+			return "" // Should not happen
+		}
+
+		encoded, err := bech32.Encode("xprv", data)
+		if err != nil {
+			return ""
+		}
+		return encoded
+	}
+
 	version := VersionMainPrivate // Default
 	if n.Version != nil {         // n.Version is slice, len check not strictly needed if we trust constructor, but nil check is good
 		version = n.Version
@@ -307,6 +386,32 @@ func (n *Node) XPriv() string {
 
 // XPub returns the extended public key (xpub) string.
 func (n *Node) XPub() string {
+	// Cardano (Ed25519-BIP32) Special Case: Use Bech32
+	if n.Curve.Name() == "ed25519-bip32" {
+		// Payload: 32 bytes public key (no prefix) + 32 bytes chain code = 64 bytes
+		payload := make([]byte, 64)
+
+		// Remove 0x00 prefix if present (it should be for Ed25519-BIP32)
+		if len(n.PubKey) == 33 {
+			copy(payload[:32], n.PubKey[1:])
+		} else {
+			copy(payload[:32], n.PubKey)
+		}
+		copy(payload[32:], n.ChainCode)
+
+		// Convert to 5-bit groups
+		data, err := bech32.ConvertBits(payload, 8, 5, true)
+		if err != nil {
+			return ""
+		}
+
+		encoded, err := bech32.Encode("xpub", data)
+		if err != nil {
+			return ""
+		}
+		return encoded
+	}
+
 	version := VersionMainPublic
 	if n.Version != nil && n.Version[0] == 0x04 && n.Version[1] == 0x35 {
 		version = VersionTestPublic
@@ -353,6 +458,17 @@ func (n *Node) Neuter() *Node {
 // PublicKey returns the public key associated with this node.
 func (n *Node) PublicKey() []byte {
 	return n.PubKey
+}
+
+// ExtendedPrivKey returns the full private key for curves with extended keys.
+// For Ed25519-BIP32, this returns the 64-byte extended key (kL || kR).
+// For other curves, this returns the same as PrivKey.
+// Returns nil for public-only nodes.
+func (n *Node) ExtendedPrivKey() []byte {
+	if !n.IsPrivate {
+		return nil
+	}
+	return n.PrivKey
 }
 
 func parseIndex(s string) (uint32, error) {

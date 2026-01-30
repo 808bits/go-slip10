@@ -14,6 +14,10 @@ A robust, idiomatic Go library for **SLIP-10** (Universal Hierarchical Determini
 
 `go-slip10` provides a unified interface to generate and derive keys across multiple elliptic curves, making it the perfect foundation for multi-chain wallets and cryptographic tools.
 
+> **📋 Supported Standards**: While named after SLIP-10, this library implements **two** HD derivation standards:
+> - **[SLIP-10](https://github.com/satoshilabs/slips/blob/master/slip-0010.md)** — Universal derivation for secp256k1 (Bitcoin/Ethereum), Ed25519 (Solana), NIST P-256, and Curve25519
+> - **[Ed25519-BIP32 (CIP-3)](https://cips.cardano.org/cip/CIP-0003)** — Cardano's IOHK variant with 64-byte extended keys and public child derivation support
+
 ## ⚡ Quick Start
 
 ```go
@@ -27,9 +31,9 @@ child, _ := master.DerivePath("m/44'/0'/0'/0/0")
 
 ## 🚀 Key Features
 
-- **Multi-Curve Support**: Native support for **secp256k1** (Bitcoin/Ethereum), **NIST P-256**, **Ed25519** (Solana/Cardano), and **Curve25519**.
-- **Standards Compliant**: Strictly follows [SLIP-10](https://github.com/satoshilabs/slips/blob/master/slip-0010.md) and [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) specifications.
-- **Public Child Derivation (CKDpub)**: Full support for deriving public child keys from public parent keys for Weierstrass curves (`secp256k1`, `NIST P-256`), enabling secure watch-only architectures.
+- **Multi-Curve Support**: Native support for **secp256k1** (Bitcoin/Ethereum), **NIST P-256**, **Ed25519** (Solana), **Ed25519-BIP32** (Cardano), and **Curve25519**.
+- **Standards Compliant**: Strictly follows [SLIP-10](https://github.com/satoshilabs/slips/blob/master/slip-0010.md), [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki), and [CIP-1852](https://cips.cardano.org/cip/CIP-1852) specifications.
+- **Public Child Derivation (CKDpub)**: Full support for deriving public child keys from public parent keys for Weierstrass curves (`secp256k1`, `NIST P-256`) and Ed25519-BIP32, enabling secure watch-only architectures.
 - **Verified Correctness**: Rigorously tested against official test vectors and reference implementations. **97% Test Coverage**.
 - **High Performance**: Includes a custom, optimized Base58 implementation and minimal external dependencies.
 
@@ -48,9 +52,10 @@ Why choose `go-slip10` over other libraries?
 | Feature | `go-slip10` | `btcsuite/btcutil` | `anyproto/go-slip10` |
 |:---|:---:|:---:|:---:|
 | **SLIP-10 Support** | ✅ Native | ❌ BIP-32 only | ✅ Ed25519 only |
-| **Multi-Curve** | ✅ 4 curves | ❌ Secp256k1 only | ❌ Ed25519 only |
+| **Multi-Curve** | ✅ 5 curves | ❌ Secp256k1 only | ❌ Ed25519 only |
 | **BIP-39** | ✅ Built-in | ⚠️ Separate pkg | ❌ |
-| **Public Derivation** | ✅ Weierstrass | ✅ | ❌ |
+| **Cardano (CIP-1852)** | ✅ Ed25519-BIP32 | ❌ | ❌ |
+| **Public Derivation** | ✅ Weierstrass + Ed25519-BIP32 | ✅ | ❌ |
 | **Dependencies** | 🟢 Minimal | 🔴 Heavy | 🟢 Minimal |
 | **Type Safety** | 🛡️ Strict | ⚠️ Loose | ⚠️ Loose |
 
@@ -100,6 +105,12 @@ solMaster, _ := slip10.NewMasterNode(seed, slip10.NewEd25519())
 // Derive path: m/44'/501'/0'/0' (Hardened only for Ed25519)
 solChild, _ := solMaster.DerivePath("m/44'/501'/0'/0'")
 fmt.Printf("SOL Private Key: %x\n", solChild.PrivKey)
+
+// Create a Master Node for Cardano (Ed25519-BIP32)
+adaMaster, _ := slip10.NewMasterNode(seed, slip10.NewEd25519Bip32())
+// Derive CIP-1852 path: m/1852'/1815'/0'/0/0 (supports soft derivation)
+adaPayment, _ := adaMaster.DerivePath("m/1852'/1815'/0'/0/0")
+fmt.Printf("ADA Payment Key: %x\n", adaPayment.ExtendedPrivKey())
 ```
 
 ### 3. Public Child Derivation (Watch-Only Wallets)

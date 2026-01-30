@@ -858,7 +858,7 @@ func TestNewNodeFromExtendedKeyErrors(t *testing.T) {
 		{
 			name:      "Invalid Base58",
 			key:       "invalid-base58-chars-0OIl",
-			errString: "invalid base58check length", // base58Decode returns nil, causes length check failure
+			errString: "invalid extended key encoding (neither base58 nor bech32)", // was "invalid base58check length"
 		},
 		{
 			name: "Invalid Length",
