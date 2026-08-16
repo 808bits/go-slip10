@@ -228,6 +228,16 @@ func (c *ed25519Bip32Curve) publicKeyRaw(kL []byte) []byte {
 	return point.Bytes()
 }
 
+// validEd25519Point reports whether b is a canonical 32-byte encoding of a
+// point on the Ed25519 curve.
+func validEd25519Point(b []byte) bool {
+	if len(b) != 32 {
+		return false
+	}
+	_, err := edwards25519.NewIdentityPoint().SetBytes(b)
+	return err == nil
+}
+
 // deriveKL computes kL' = (ZL * 8 + kL) mod L, where L is the Ed25519 order.
 // ZL is 28 bytes, kL is 32 bytes, result is 32 bytes (little-endian).
 func deriveKL(ZL, kL []byte) ([]byte, error) {

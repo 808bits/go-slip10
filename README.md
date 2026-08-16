@@ -15,8 +15,8 @@ A robust, idiomatic Go library for **SLIP-10** (Universal Hierarchical Determini
 `go-slip10` provides a unified interface to generate and derive keys across multiple elliptic curves, making it the perfect foundation for multi-chain wallets and cryptographic tools.
 
 > **📋 Supported Standards**: While named after SLIP-10, this library implements **two** HD derivation standards:
-> - **[SLIP-10](https://github.com/satoshilabs/slips/blob/master/slip-0010.md)** — Universal derivation for secp256k1 (Bitcoin/Ethereum), Ed25519 (Solana), NIST P-256, and Curve25519
-> - **[Ed25519-BIP32 (CIP-3)](https://cips.cardano.org/cip/CIP-0003)** — Cardano's IOHK variant with 64-byte extended keys and public child derivation support
+> - **[SLIP-10](https://github.com/satoshilabs/slips/blob/master/slip-0010.md)**: Universal derivation for secp256k1 (Bitcoin/Ethereum), Ed25519 (Solana), NIST P-256, and Curve25519
+> - **[Ed25519-BIP32 (CIP-3)](https://cips.cardano.org/cip/CIP-0003)**: Cardano's IOHK variant with 64-byte extended keys and public child derivation support
 
 ## ⚡ Quick Start
 
@@ -154,9 +154,11 @@ go test -bench=. -benchmem ./...
 ## 🔒 Security & Design
 
 - **Type Safety**: The API is designed to prevent common mistakes, such as attempting public derivation on curves that don't support it (like Ed25519).
-- **Minimal Dependencies**: Only uses `golang.org/x/crypto` for core cryptographic operations.
+- **Input Validation**: Imported extended keys are validated: private scalars must be in range for the curve, public keys must decode to a point on the curve, and unknown version bytes or malformed encodings are rejected.
+- **Well-Audited Dependencies**: Cryptographic operations use `golang.org/x/crypto`, `decred/dcrd/dcrec/secp256k1`, and `filippo.io/edwards25519`.
 - **Audit Friendly**: Clean, readable code structure with clear separation of curve logic.
-- **Constant-Time Operations**: Uses Go's standard library bignum operations for sensitive calculations.
+- **Not Constant-Time**: Scalar arithmetic for BIP-32 child derivation uses Go's `math/big`, which is not constant-time. Do not use this library where an attacker can measure derivation timing across a trust boundary.
+- **Best-Effort Wiping**: `Node.Wipe()` zeroes the node's private key and chain code, but copies of key material may remain in intermediate buffers or moved memory managed by the Go runtime.
 
 ## 🤝 Contributing
 

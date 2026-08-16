@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/meehow/go-slip10/base58"
 	"github.com/meehow/go-slip10/bech32"
@@ -64,7 +65,12 @@ type Node struct {
 }
 
 // NewMasterNode creates a new master node from a seed for the specified curve.
+// The seed must be 16 to 64 bytes (128 to 512 bits) long, per SLIP-10.
 func NewMasterNode(seed []byte, curve Curve) (*Node, error) {
+	if len(seed) < 16 || len(seed) > 64 {
+		return nil, fmt.Errorf("invalid seed length %d: must be 16 to 64 bytes (128 to 512 bits)", len(seed))
+	}
+
 	privKey, chainCode, err := curve.MasterKey(seed)
 	if err != nil {
 		return nil, err
@@ -87,23 +93,24 @@ func isPrivateVersion(version []byte) bool {
 	return bytes.Equal(version, VersionMainPrivate) || bytes.Equal(version, VersionTestPrivate)
 }
 
+func isPublicVersion(version []byte) bool {
+	return bytes.Equal(version, VersionMainPublic) || bytes.Equal(version, VersionTestPublic)
+}
+
 func parseKeyData(actualKeyData []byte, isPrivate bool, curve Curve) (privKey, pubKey []byte, err error) {
 	if isPrivate {
 		if actualKeyData[0] != 0 {
 			return nil, nil, errors.New("invalid private key prefix")
 		}
 		privKey = actualKeyData[1:]
-		if len(privKey) != 32 {
-			return nil, nil, errors.New("invalid private key length")
+		if err := validatePrivateKey(curve, privKey); err != nil {
+			return nil, nil, err
 		}
 		pubKey = curve.PublicKey(privKey)
 	} else {
 		pubKey = actualKeyData
-		if len(pubKey) != 33 {
-			return nil, nil, errors.New("invalid public key length")
-		}
-		if pubKey[0] != 0x02 && pubKey[0] != 0x03 {
-			return nil, nil, errors.New("invalid public key prefix")
+		if err := validatePublicKey(curve, pubKey); err != nil {
+			return nil, nil, err
 		}
 	}
 	return privKey, pubKey, nil
@@ -128,6 +135,9 @@ func NewNodeFromExtendedKey(extendedKey string, curve Curve) (*Node, error) {
 	// Try Base58Check first (standard SLIP-10/BIP-32)
 	payload, err := base58.CheckDecode(extendedKey)
 	if err == nil {
+		if curve.Name() == "ed25519-bip32" {
+			return nil, errors.New("base58 extended keys are not supported for ed25519-bip32, use bech32")
+		}
 		if len(payload) != totalLen {
 			return nil, errors.New("invalid extended key length")
 		}
@@ -140,6 +150,9 @@ func NewNodeFromExtendedKey(extendedKey string, curve Curve) (*Node, error) {
 		actualKeyData := payload[keyOffset:]
 
 		isPrivate := isPrivateVersion(version)
+		if !isPrivate && !isPublicVersion(version) {
+			return nil, errors.New("unknown extended key version")
+		}
 		privKey, pubKey, err := parseKeyData(actualKeyData, isPrivate, curve)
 		if err != nil {
 			return nil, err
@@ -178,29 +191,40 @@ func NewNodeFromExtendedKey(extendedKey string, curve Curve) (*Node, error) {
 		var isPrivate bool
 		var privKey, pubKey, chainCode []byte
 
-		if hrp == "xprv" {
-			// Cardano xprv payload: 96 bytes (64 bytes key + 32 bytes chain code)
+		switch {
+		// "xprv" plus the CIP-5 extended signing key prefixes (root_xsk, acct_xsk, ...)
+		case hrp == "xprv" || strings.HasSuffix(hrp, "_xsk"):
+			// Extended private key payload: 96 bytes (64 bytes key + 32 bytes chain code)
 			if len(payload) != 96 {
-				return nil, fmt.Errorf("invalid bech32 xval length for xprv: expected 96, got %d", len(payload))
+				return nil, fmt.Errorf("invalid bech32 payload length for %s: expected 96, got %d", hrp, len(payload))
 			}
 			isPrivate = true
 			privKey = payload[:64]
 			chainCode = payload[64:]
+			// Every valid Ed25519-BIP32 kL is a multiple of 8 (the master key is
+			// clamped and child derivation adds 8*ZL), so reject anything else.
+			if privKey[0]&0b00000111 != 0 {
+				return nil, errors.New("invalid ed25519-bip32 private key: kL is not a multiple of 8")
+			}
 			pubKey = curve.PublicKey(privKey)
-		} else if hrp == "xpub" {
-			// Cardano xpub payload: 64 bytes (32 bytes public key + 32 bytes chain code)
+		// "xpub" plus the CIP-5 extended verification key prefixes (root_xvk, acct_xvk, ...)
+		case hrp == "xpub" || strings.HasSuffix(hrp, "_xvk"):
+			// Extended public key payload: 64 bytes (32 bytes public key + 32 bytes chain code)
 			if len(payload) != 64 {
-				return nil, fmt.Errorf("invalid bech32 xval length for xpub: expected 64, got %d", len(payload))
+				return nil, fmt.Errorf("invalid bech32 payload length for %s: expected 64, got %d", hrp, len(payload))
 			}
 			isPrivate = false
 			rawPubKey := payload[:32]
 			chainCode = payload[32:]
+			if !validEd25519Point(rawPubKey) {
+				return nil, errors.New("invalid public key: not a valid point")
+			}
 
 			// Add 0x00 prefix for internal format
 			pubKey = make([]byte, 33)
 			pubKey[0] = 0x00
 			copy(pubKey[1:], rawPubKey)
-		} else {
+		default:
 			return nil, fmt.Errorf("unknown bech32 hrp: %s", hrp)
 		}
 
@@ -222,6 +246,9 @@ func NewNodeFromExtendedKey(extendedKey string, curve Curve) (*Node, error) {
 
 // Derive derives a child node at the given index.
 func (n *Node) Derive(index uint32) (*Node, error) {
+	if n.Depth == 255 {
+		return nil, errors.New("cannot derive child: maximum depth (255) reached")
+	}
 	if !n.IsPrivate && index >= HardenedOffset {
 		return nil, errors.New("cannot derive hardened child from public parent")
 	}
@@ -308,7 +335,7 @@ func ParsePath(path string) ([]uint32, error) {
 	for i := 2; i <= len(path); i++ {
 		if i == len(path) || path[i] == '/' {
 			if start == i {
-				return nil, fmt.Errorf("invalid path part %q: empty segment", "")
+				return nil, fmt.Errorf("invalid path: empty segment at position %d", start)
 			}
 			index, err := parseIndex(path[start:i])
 			if err != nil {
@@ -324,6 +351,11 @@ func ParsePath(path string) ([]uint32, error) {
 
 // Wipe overwrites the private key and chain code with zeros to protect sensitive data in memory.
 // It is recommended to call this method when the Node is no longer needed.
+//
+// Wiping is best-effort: copies of key material may remain in buffers used
+// during derivation or serialization (for example by XPriv), and the Go
+// runtime may have moved or copied memory. Wipe only clears this node's own
+// PrivKey and ChainCode slices.
 func (n *Node) Wipe() {
 	clear(n.PrivKey)
 	clear(n.ChainCode)
@@ -346,6 +378,12 @@ func (n *Node) serialize(version []byte, keyData []byte) string {
 }
 
 // XPriv returns the extended private key (xpriv) string.
+// It returns an empty string for public-only nodes, so callers should check
+// the result before persisting it.
+//
+// For the ed25519-bip32 curve the key is Bech32-encoded with the "xprv"
+// human-readable prefix (CIP-5 prefixes such as "root_xsk" are accepted on
+// import by NewNodeFromExtendedKey).
 func (n *Node) XPriv() string {
 	if !n.IsPrivate {
 		return ""
@@ -385,6 +423,10 @@ func (n *Node) XPriv() string {
 }
 
 // XPub returns the extended public key (xpub) string.
+//
+// For the ed25519-bip32 curve the key is Bech32-encoded with the "xpub"
+// human-readable prefix (CIP-5 prefixes such as "root_xvk" are accepted on
+// import by NewNodeFromExtendedKey).
 func (n *Node) XPub() string {
 	// Cardano (Ed25519-BIP32) Special Case: Use Bech32
 	if n.Curve.Name() == "ed25519-bip32" {
@@ -432,6 +474,9 @@ func (n *Node) Fingerprint() []byte {
 // Neuter returns a new public-only node derived from this node.
 // The returned node cannot be used for private key operations.
 // Returns nil if the node is already public-only.
+//
+// The returned node owns copies of its data, so wiping or mutating the
+// original node does not affect it.
 func (n *Node) Neuter() *Node {
 	if !n.IsPrivate {
 		return nil
@@ -446,10 +491,10 @@ func (n *Node) Neuter() *Node {
 		Curve:     n.Curve,
 		IsPrivate: false,
 		PrivKey:   nil,
-		PubKey:    n.PubKey,
-		ChainCode: n.ChainCode,
+		PubKey:    bytes.Clone(n.PubKey),
+		ChainCode: bytes.Clone(n.ChainCode),
 		Depth:     n.Depth,
-		ParentFP:  n.ParentFP,
+		ParentFP:  bytes.Clone(n.ParentFP),
 		Index:     n.Index,
 		Version:   version,
 	}

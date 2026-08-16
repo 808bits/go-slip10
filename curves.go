@@ -253,6 +253,74 @@ func (c *curve25519Curve) PublicKey(privKey []byte) []byte {
 	return res
 }
 
+// validatePrivateKey checks that privKey is a usable private key for the curve.
+// For Weierstrass curves the scalar must be nonzero and below the group order,
+// matching the checks other BIP-32 implementations perform on import.
+func validatePrivateKey(curve Curve, privKey []byte) error {
+	switch curve.Name() {
+	case "secp256k1":
+		return validateWeierstrassScalar(privKey, secp256k1.S256().N)
+	case "nist256p1":
+		return validateWeierstrassScalar(privKey, elliptic.P256().Params().N)
+	default:
+		if len(privKey) != 32 {
+			return errors.New("invalid private key length")
+		}
+		return nil
+	}
+}
+
+func validateWeierstrassScalar(privKey []byte, n *big.Int) error {
+	if len(privKey) != 32 {
+		return errors.New("invalid private key length")
+	}
+	k := new(big.Int).SetBytes(privKey)
+	if k.Sign() == 0 || k.Cmp(n) >= 0 {
+		return errors.New("private key out of range for curve")
+	}
+	return nil
+}
+
+// validatePublicKey checks that pubKey is a valid serialized public key for the
+// curve, including that it decodes to a point on the curve where applicable.
+func validatePublicKey(curve Curve, pubKey []byte) error {
+	if len(pubKey) != 33 {
+		return errors.New("invalid public key length")
+	}
+	switch curve.Name() {
+	case "secp256k1":
+		if pubKey[0] != 0x02 && pubKey[0] != 0x03 {
+			return errors.New("invalid public key prefix")
+		}
+		if _, err := secp256k1.ParsePubKey(pubKey); err != nil {
+			return errors.New("invalid public key: not on curve")
+		}
+	case "nist256p1":
+		if pubKey[0] != 0x02 && pubKey[0] != 0x03 {
+			return errors.New("invalid public key prefix")
+		}
+		if x, _ := elliptic.UnmarshalCompressed(elliptic.P256(), pubKey); x == nil {
+			return errors.New("invalid public key: not on curve")
+		}
+	case "ed25519", "ed25519-bip32":
+		if pubKey[0] != 0x00 {
+			return errors.New("invalid public key prefix")
+		}
+		if !validEd25519Point(pubKey[1:]) {
+			return errors.New("invalid public key: not a valid point")
+		}
+	case "curve25519":
+		if pubKey[0] != 0x00 {
+			return errors.New("invalid public key prefix")
+		}
+	default:
+		if pubKey[0] != 0x02 && pubKey[0] != 0x03 {
+			return errors.New("invalid public key prefix")
+		}
+	}
+	return nil
+}
+
 // Helper functions for Weierstrass curves
 
 func deriveMasterKey(salt, seed []byte, n *big.Int) ([]byte, []byte, error) {

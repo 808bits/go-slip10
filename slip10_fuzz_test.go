@@ -40,6 +40,7 @@ func FuzzNewNodeFromExtendedKey(f *testing.F) {
 func FuzzMasterNode(f *testing.F) {
 	f.Add([]byte("seed"))
 	f.Add([]byte(""))
+	f.Add([]byte("0123456789abcdef"))
 
 	f.Fuzz(func(t *testing.T, seed []byte) {
 		for _, curve := range []Curve{NewSecp256k1(), NewNist256p1(), NewEd25519(), NewCurve25519()} {
@@ -50,8 +51,8 @@ func FuzzMasterNode(f *testing.F) {
 
 // FuzzDerive fuzzes single-step derivation.
 func FuzzDerive(f *testing.F) {
-	f.Add([]byte("seed"), uint32(0))
-	f.Add([]byte("seed"), uint32(0x80000000))
+	f.Add([]byte("0123456789abcdef"), uint32(0))
+	f.Add([]byte("0123456789abcdef"), uint32(0x80000000))
 
 	f.Fuzz(func(t *testing.T, seed []byte, index uint32) {
 		for _, curve := range []Curve{NewSecp256k1(), NewNist256p1(), NewEd25519(), NewCurve25519()} {
@@ -83,8 +84,8 @@ func FuzzDerive(f *testing.F) {
 
 // FuzzDerivePath fuzzes path-based derivation.
 func FuzzDerivePath(f *testing.F) {
-	f.Add([]byte("seed"), "m/0/1")
-	f.Add([]byte("seed"), "m/44'/0'/0'")
+	f.Add([]byte("0123456789abcdef"), "m/0/1")
+	f.Add([]byte("0123456789abcdef"), "m/44'/0'/0'")
 
 	f.Fuzz(func(t *testing.T, seed []byte, path string) {
 		for _, curve := range []Curve{NewSecp256k1(), NewNist256p1(), NewEd25519(), NewCurve25519()} {

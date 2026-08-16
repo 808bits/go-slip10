@@ -662,7 +662,7 @@ func TestNewMasterNodeError(t *testing.T) {
 		masterKeyErr: errors.New("master key generation failed"),
 	}
 
-	_, err := NewMasterNode([]byte("seed"), curve)
+	_, err := NewMasterNode([]byte("0123456789abcdef"), curve)
 	if err == nil {
 		t.Error("expected error from NewMasterNode")
 	}
@@ -983,7 +983,7 @@ func TestInvalidPublicKeyDerivation(t *testing.T) {
 }
 
 func TestNodeWipe(t *testing.T) {
-	seed := []byte("seed")
+	seed := []byte("0123456789abcdef")
 	node, err := NewMasterNode(seed, NewSecp256k1())
 	if err != nil {
 		t.Fatalf("NewMasterNode failed: %v", err)
