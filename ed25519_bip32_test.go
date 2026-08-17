@@ -537,3 +537,113 @@ func TestCardanoBech32EdgeCases(t *testing.T) {
 		}
 	})
 }
+
+func TestEd25519Bip32PublicKeyInvalidLengths(t *testing.T) {
+	curve := NewEd25519Bip32()
+
+	tests := []struct {
+		name    string
+		privKey []byte
+		wantNil bool
+	}{
+		{"empty key", []byte{}, true},
+		{"too short (31 bytes)", make([]byte, 31), true},
+		{"invalid length (33 bytes)", make([]byte, 33), true},
+		{"invalid length (63 bytes)", make([]byte, 63), true},
+		{"invalid length (65 bytes)", make([]byte, 65), true},
+		{"valid 32 bytes", make([]byte, 32), false},
+		{"valid 64 bytes", make([]byte, 64), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := curve.PublicKey(tt.privKey)
+			if tt.wantNil && result != nil {
+				t.Errorf("PublicKey() expected nil for invalid length, got %d bytes", len(result))
+			}
+			if !tt.wantNil && result == nil {
+				t.Errorf("PublicKey() expected non-nil for valid length, got nil")
+			}
+		})
+	}
+}
+
+func TestEd25519Bip32DerivePublicChildErrors(t *testing.T) {
+	curve := NewEd25519Bip32()
+
+	seed := make([]byte, 32)
+	seed[0] = 0x01
+	node, err := NewMasterNode(seed, curve)
+	if err != nil {
+		t.Fatalf("Failed to create master node: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		pubKey    []byte
+		chainCode []byte
+		index     uint32
+		wantErr   string
+	}{
+		{
+			name:      "hardened derivation from public key",
+			pubKey:    node.PubKey,
+			chainCode: node.ChainCode,
+			index:     HardenedOffset,
+			wantErr:   "cannot derive hardened child from public key",
+		},
+		{
+			name:      "invalid public key length (31 bytes)",
+			pubKey:    make([]byte, 31),
+			chainCode: node.ChainCode,
+			index:     0,
+			wantErr:   "invalid public key length",
+		},
+		{
+			name:      "invalid public key length (34 bytes)",
+			pubKey:    make([]byte, 34),
+			chainCode: node.ChainCode,
+			index:     0,
+			wantErr:   "invalid public key length",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := curve.DerivePublicChild(tt.pubKey, tt.chainCode, tt.index)
+			if err == nil {
+				t.Errorf("DerivePublicChild() expected error, got nil")
+				return
+			}
+			if err.Error() != tt.wantErr {
+				t.Errorf("DerivePublicChild() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestEd25519Bip32DerivePublicChildWithRawKey(t *testing.T) {
+	curve := NewEd25519Bip32()
+
+	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
+	node, err := NewMasterNode(seed, curve)
+	if err != nil {
+		t.Fatalf("Failed to create master node: %v", err)
+	}
+
+	// 32-byte raw public key without the 0x00 prefix should also work
+	rawPubKey := node.PubKey[1:]
+
+	childPub, childChain, err := curve.DerivePublicChild(rawPubKey, node.ChainCode, 0)
+	if err != nil {
+		t.Fatalf("DerivePublicChild with raw key failed: %v", err)
+	}
+
+	if len(childPub) != 33 {
+		t.Errorf("Expected 33-byte public key, got %d bytes", len(childPub))
+	}
+
+	if len(childChain) != 32 {
+		t.Errorf("Expected 32-byte chain code, got %d bytes", len(childChain))
+	}
+}

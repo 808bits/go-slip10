@@ -389,17 +389,16 @@ func (n *Node) XPriv() string {
 		return ""
 	}
 
-	// Cardano (Ed25519-BIP32) Special Case: Use Bech32
+	// ed25519-bip32 keys are bech32-encoded
 	if n.Curve.Name() == "ed25519-bip32" {
-		// Payload: 64 bytes key + 32 bytes chain code = 96 bytes
+		// 64 bytes key + 32 bytes chain code
 		payload := make([]byte, 96)
 		copy(payload[:64], n.PrivKey)
 		copy(payload[64:], n.ChainCode)
 
-		// Convert to 5-bit groups
 		data, err := bech32.ConvertBits(payload, 8, 5, true)
 		if err != nil {
-			return "" // Should not happen
+			return ""
 		}
 
 		encoded, err := bech32.Encode("xprv", data)
@@ -409,8 +408,8 @@ func (n *Node) XPriv() string {
 		return encoded
 	}
 
-	version := VersionMainPrivate // Default
-	if n.Version != nil {         // n.Version is slice, len check not strictly needed if we trust constructor, but nil check is good
+	version := VersionMainPrivate
+	if n.Version != nil {
 		version = n.Version
 	}
 
@@ -428,12 +427,10 @@ func (n *Node) XPriv() string {
 // human-readable prefix (CIP-5 prefixes such as "root_xvk" are accepted on
 // import by NewNodeFromExtendedKey).
 func (n *Node) XPub() string {
-	// Cardano (Ed25519-BIP32) Special Case: Use Bech32
+	// ed25519-bip32 keys are bech32-encoded
 	if n.Curve.Name() == "ed25519-bip32" {
-		// Payload: 32 bytes public key (no prefix) + 32 bytes chain code = 64 bytes
+		// 32 bytes public key (without the 0x00 prefix) + 32 bytes chain code
 		payload := make([]byte, 64)
-
-		// Remove 0x00 prefix if present (it should be for Ed25519-BIP32)
 		if len(n.PubKey) == 33 {
 			copy(payload[:32], n.PubKey[1:])
 		} else {
@@ -441,7 +438,6 @@ func (n *Node) XPub() string {
 		}
 		copy(payload[32:], n.ChainCode)
 
-		// Convert to 5-bit groups
 		data, err := bech32.ConvertBits(payload, 8, 5, true)
 		if err != nil {
 			return ""

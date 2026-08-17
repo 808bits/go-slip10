@@ -58,7 +58,6 @@ func (c *ed25519Bip32Curve) MasterKey(seed []byte) ([]byte, []byte, error) {
 		kL[31] &= 0b01111111 // Clear highest bit
 		kL[31] |= 0b01000000 // Set second highest bit
 
-		// Return 64-byte extended private key (kL || kR) and chain code
 		privKey := make([]byte, 64)
 		copy(privKey[:32], kL)
 		copy(privKey[32:], kR)
@@ -130,7 +129,6 @@ func (c *ed25519Bip32Curve) DerivePrivateChild(privKey, chainCode []byte, index 
 	// Compute kR' = (ZR + kR) mod 2^256
 	kRNew := addMod256(ZR, kR)
 
-	// Return 64-byte child private key
 	childPrivKey := make([]byte, 64)
 	copy(childPrivKey[:32], kLNew)
 	copy(childPrivKey[32:], kRNew)
@@ -182,7 +180,6 @@ func (c *ed25519Bip32Curve) DerivePublicChild(pubKey, chainCode []byte, index ui
 		return nil, nil, err
 	}
 
-	// Return with 0x00 prefix to match our format
 	childPubKey := make([]byte, 33)
 	childPubKey[0] = 0x00
 	copy(childPubKey[1:], childA)
@@ -203,7 +200,6 @@ func (c *ed25519Bip32Curve) PublicKey(privKey []byte) []byte {
 
 	pubKeyRaw := c.publicKeyRaw(kL)
 
-	// Return with 0x00 prefix to match existing Ed25519 format
 	res := make([]byte, 33)
 	res[0] = 0x00
 	copy(res[1:], pubKeyRaw)
@@ -212,12 +208,10 @@ func (c *ed25519Bip32Curve) PublicKey(privKey []byte) []byte {
 
 // publicKeyRaw returns the raw 32-byte Ed25519 public key from a 32-byte scalar.
 func (c *ed25519Bip32Curve) publicKeyRaw(kL []byte) []byte {
-	// The kL is already clamped, so we use it directly as a scalar.
-	// We need to use SetUniformBytes because the derived scalar may exceed L
-	// but is valid for point multiplication. SetUniformBytes takes 64 bytes
-	// and reduces mod L.
+	// kL is already clamped but a derived scalar may exceed L, so go through
+	// SetUniformBytes, which takes 64 bytes and reduces mod L.
 	scalarBytes := make([]byte, 64)
-	copy(scalarBytes, kL) // Pad to 64 bytes, little-endian
+	copy(scalarBytes, kL)
 
 	scalar, err := edwards25519.NewScalar().SetUniformBytes(scalarBytes)
 	if err != nil {
@@ -238,36 +232,29 @@ func validEd25519Point(b []byte) bool {
 	return err == nil
 }
 
-// deriveKL computes kL' = (ZL * 8 + kL) mod L, where L is the Ed25519 order.
-// ZL is 28 bytes, kL is 32 bytes, result is 32 bytes (little-endian).
-func deriveKL(ZL, kL []byte) ([]byte, error) {
-	// Convert ZL (28 bytes) to a 32-byte scalar by padding and multiplying by 8
-	// ZL * 8 is equivalent to left-shifting by 3 bits
+// zlTimes8 pads the 28-byte ZL to 32 bytes and multiplies it by 8
+// (little-endian shift left by 3 bits).
+func zlTimes8(ZL []byte) []byte {
+	extended := make([]byte, 32)
+	copy(extended, ZL)
 
-	// First, extend ZL to 32 bytes (pad with zeros on the right for little-endian)
-	zlExtended := make([]byte, 32)
-	copy(zlExtended, ZL)
-
-	// Multiply by 8 (shift left by 3 bits)
-	zlTimes8 := make([]byte, 32)
+	result := make([]byte, 32)
 	var carry byte
 	for i := 0; i < 32; i++ {
-		newVal := (uint16(zlExtended[i]) << 3) | uint16(carry)
-		zlTimes8[i] = byte(newVal & 0xFF)
-		carry = byte(newVal >> 8)
+		v := (uint16(extended[i]) << 3) | uint16(carry)
+		result[i] = byte(v & 0xFF)
+		carry = byte(v >> 8)
 	}
+	return result
+}
 
-	// Add kL to zlTimes8
-	result := make([]byte, 32)
-	carry = 0
-	for i := 0; i < 32; i++ {
-		sum := uint16(zlTimes8[i]) + uint16(kL[i]) + uint16(carry)
-		result[i] = byte(sum & 0xFF)
-		carry = byte(sum >> 8)
-	}
+// deriveKL computes kL' = ZL * 8 + kL.
+// ZL is 28 bytes, kL is 32 bytes, result is 32 bytes (little-endian).
+func deriveKL(ZL, kL []byte) ([]byte, error) {
+	result := addMod256(zlTimes8(ZL), kL)
 
-	// Check if result mod L == 0 (invalid key)
-	// For a proper check, we'd need to reduce mod L, but in practice this is extremely rare
+	// A zero result would be an invalid key. A full check would reduce mod L,
+	// but hitting that in practice is vanishingly unlikely.
 	allZero := true
 	for _, b := range result {
 		if b != 0 {
@@ -303,22 +290,9 @@ func derivePublicPoint(A, ZL []byte) ([]byte, error) {
 		return nil, errors.New("invalid parent public key")
 	}
 
-	// Compute ZL * 8 as a scalar
-	zlExtended := make([]byte, 32)
-	copy(zlExtended, ZL)
-
-	// Multiply by 8
-	zlTimes8 := make([]byte, 32)
-	var carry byte
-	for i := 0; i < 32; i++ {
-		newVal := (uint16(zlExtended[i]) << 3) | uint16(carry)
-		zlTimes8[i] = byte(newVal & 0xFF)
-		carry = byte(newVal >> 8)
-	}
-
-	// Create scalar from zlTimes8 using SetUniformBytes (64-byte input, reduces mod L)
+	// SetUniformBytes takes 64 bytes and reduces mod L
 	scalarBytes := make([]byte, 64)
-	copy(scalarBytes, zlTimes8)
+	copy(scalarBytes, zlTimes8(ZL))
 
 	scalar, err := edwards25519.NewScalar().SetUniformBytes(scalarBytes)
 	if err != nil {

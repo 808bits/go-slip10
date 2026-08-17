@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// TestNewNodeFromExtendedKeyEdgeCases tests additional error paths when parsing extended keys
 func TestNewNodeFromExtendedKeyEdgeCases(t *testing.T) {
 	curve := NewSecp256k1()
 	cardanoCurve := NewEd25519Bip32()
@@ -79,7 +78,6 @@ func TestNewNodeFromExtendedKeyEdgeCases(t *testing.T) {
 	}
 }
 
-// TestParsePathErrors tests error paths in ParsePath
 func TestParsePathErrors(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -153,7 +151,6 @@ func TestParsePathErrors(t *testing.T) {
 	}
 }
 
-// TestDerivePathError tests error handling in DerivePath
 func TestDerivePathError(t *testing.T) {
 	curve := NewSecp256k1()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
@@ -175,7 +172,6 @@ func TestDerivePathError(t *testing.T) {
 	}
 }
 
-// TestXPubTestnet tests XPub with testnet version
 func TestXPubTestnet(t *testing.T) {
 	curve := NewSecp256k1()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
@@ -196,7 +192,6 @@ func TestXPubTestnet(t *testing.T) {
 	}
 }
 
-// TestXPubWith32BytePubKey tests XPub with 32-byte Ed25519-BIP32 public key
 func TestXPubWith32BytePubKey(t *testing.T) {
 	curve := NewEd25519Bip32()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -212,7 +207,6 @@ func TestXPubWith32BytePubKey(t *testing.T) {
 	}
 }
 
-// TestEd25519BaseClassPublicDerivation tests that base ed25519 doesn't support public derivation
 func TestEd25519BaseClassPublicDerivation(t *testing.T) {
 	curve := NewEd25519()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -228,7 +222,6 @@ func TestEd25519BaseClassPublicDerivation(t *testing.T) {
 	}
 }
 
-// TestCurve25519PublicDerivation tests that curve25519 doesn't support public derivation
 func TestCurve25519PublicDerivation(t *testing.T) {
 	curve := NewCurve25519()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -244,7 +237,6 @@ func TestCurve25519PublicDerivation(t *testing.T) {
 	}
 }
 
-// TestWipe tests that Wipe clears sensitive data
 func TestWipe(t *testing.T) {
 	curve := NewSecp256k1()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")

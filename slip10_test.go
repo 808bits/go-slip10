@@ -314,8 +314,6 @@ func TestPublicDerivation(t *testing.T) {
 	}
 }
 
-// Tests moved from coverage_test.go
-
 // mockErrorCurve is a test curve that returns errors to test error paths
 type mockErrorCurve struct {
 	name          string
@@ -347,7 +345,6 @@ func (c *mockErrorCurve) PublicKey(privKey []byte) []byte {
 	return make([]byte, 33)
 }
 
-// Test Ed25519 DerivePublicChild returns error (line 34-36 in curves.go)
 func TestEd25519DerivePublicChildNotSupported(t *testing.T) {
 	curve := NewEd25519()
 	_, _, err := curve.DerivePublicChild(nil, nil, 0)
@@ -359,7 +356,6 @@ func TestEd25519DerivePublicChildNotSupported(t *testing.T) {
 	}
 }
 
-// Test Curve25519 DerivePublicChild returns error (inherits from baseCurve)
 func TestCurve25519DerivePublicChildNotSupported(t *testing.T) {
 	curve := NewCurve25519()
 	_, _, err := curve.DerivePublicChild(nil, nil, 0)
@@ -371,7 +367,6 @@ func TestCurve25519DerivePublicChildNotSupported(t *testing.T) {
 	}
 }
 
-// Test secp256k1 DerivePublicChild with invalid public key (line 63-64)
 func TestSecp256k1DerivePublicChildInvalidKey(t *testing.T) {
 	curve := NewSecp256k1()
 	invalidPubKey := make([]byte, 33)
@@ -387,7 +382,6 @@ func TestSecp256k1DerivePublicChildInvalidKey(t *testing.T) {
 	}
 }
 
-// Test deriveWeierstrassPublicChild with hardened index (line 115-117)
 func TestWeierstrassPublicChildHardenedIndex(t *testing.T) {
 	curve := NewSecp256k1()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -411,7 +405,6 @@ func TestWeierstrassPublicChildHardenedIndex(t *testing.T) {
 	}
 }
 
-// Test Ed25519 normal derivation error (line 184-186)
 func TestEd25519NormalDerivationNotSupported(t *testing.T) {
 	curve := NewEd25519()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -427,7 +420,6 @@ func TestEd25519NormalDerivationNotSupported(t *testing.T) {
 	}
 }
 
-// Test Curve25519 normal derivation error (line 232-234)
 func TestCurve25519NormalDerivationNotSupported(t *testing.T) {
 	curve := NewCurve25519()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -443,7 +435,6 @@ func TestCurve25519NormalDerivationNotSupported(t *testing.T) {
 	}
 }
 
-// Test XPriv on public node returns empty string (line 286-288)
 func TestXPrivOnPublicNode(t *testing.T) {
 	curve := NewSecp256k1()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -458,7 +449,6 @@ func TestXPrivOnPublicNode(t *testing.T) {
 	}
 }
 
-// Test XPriv with nil Version (line 290-292)
 func TestXPrivWithNilVersion(t *testing.T) {
 	curve := NewSecp256k1()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -481,7 +471,6 @@ func TestXPrivWithNilVersion(t *testing.T) {
 	}
 }
 
-// Test parseIndex with index too large (line 343-345)
 func TestParseIndexTooLarge(t *testing.T) {
 	// 2147483648 is HardenedOffset, which is >= HardenedOffset
 	_, err := ParsePath("m/2147483648")
@@ -493,7 +482,6 @@ func TestParseIndexTooLarge(t *testing.T) {
 	}
 }
 
-// Test parseIndex empty string error
 func TestParseIndexEmpty(t *testing.T) {
 	// This is caught by "empty segment" check first, but let's verify
 	_, err := ParsePath("m//0")
@@ -505,7 +493,6 @@ func TestParseIndexEmpty(t *testing.T) {
 	}
 }
 
-// Test String() with nil Curve
 func TestNodeStringNilCurve(t *testing.T) {
 	node := &Node{
 		Curve:     nil,
@@ -519,7 +506,6 @@ func TestNodeStringNilCurve(t *testing.T) {
 	}
 }
 
-// Test DerivePath error propagation (line 204-207)
 func TestDerivePathErrorPropagation(t *testing.T) {
 	curve := NewEd25519()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -535,7 +521,6 @@ func TestDerivePathErrorPropagation(t *testing.T) {
 	}
 }
 
-// Test Derive from public node with unsupported curve (tests public derivation error path)
 func TestDerivePublicNodeUnsupportedCurve(t *testing.T) {
 	curve := NewEd25519()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -562,7 +547,6 @@ func TestDerivePublicNodeUnsupportedCurve(t *testing.T) {
 	}
 }
 
-// Test secp256k1 public derivation works correctly
 func TestSecp256k1PublicDerivation(t *testing.T) {
 	curve := NewSecp256k1()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -594,7 +578,6 @@ func TestSecp256k1PublicDerivation(t *testing.T) {
 	}
 }
 
-// Test NewNodeFromExtendedKey with testnet xpriv
 func TestNewNodeFromExtendedKeyTestnet(t *testing.T) {
 	curve := NewSecp256k1()
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
@@ -619,7 +602,6 @@ func TestNewNodeFromExtendedKeyTestnet(t *testing.T) {
 	}
 }
 
-// Test that covers parseIndex with just a hardened marker and no number
 func TestParseIndexJustHardenedMarker(t *testing.T) {
 	_, err := ParsePath("m/'")
 	if err == nil {
@@ -627,8 +609,6 @@ func TestParseIndexJustHardenedMarker(t *testing.T) {
 	}
 }
 
-// Test NewMasterNode with curves that could theoretically error
-// (Though in practice, ed25519/curve25519 MasterKey never errors)
 func TestNewMasterNodeAllCurves(t *testing.T) {
 	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
 
@@ -655,7 +635,6 @@ func TestNewMasterNodeAllCurves(t *testing.T) {
 	}
 }
 
-// Test NewMasterNode error path using mock curve (line 66-67)
 func TestNewMasterNodeError(t *testing.T) {
 	curve := &mockErrorCurve{
 		name:         "mock",
@@ -671,7 +650,6 @@ func TestNewMasterNodeError(t *testing.T) {
 	}
 }
 
-// Test Derive private child error path (line 159-161)
 func TestDerivePrivateChildError(t *testing.T) {
 	curve := &mockErrorCurve{
 		name:          "mock",
@@ -1086,5 +1064,39 @@ func TestParsePath(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNeuteredXPubRoundTrip(t *testing.T) {
+	curve := NewSecp256k1()
+
+	seed, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+	node, err := NewMasterNode(seed, curve)
+	if err != nil {
+		t.Fatalf("Failed to create master node: %v", err)
+	}
+
+	pubNode := node.Neuter()
+
+	if xpriv := pubNode.XPriv(); xpriv != "" {
+		t.Errorf("XPriv() on public-only node should return empty string, got %s", xpriv)
+	}
+
+	xpub := pubNode.XPub()
+	if xpub == "" {
+		t.Error("XPub() on public-only node should not return empty string")
+	}
+
+	restored, err := NewNodeFromExtendedKey(xpub, curve)
+	if err != nil {
+		t.Fatalf("Failed to parse xpub: %v", err)
+	}
+
+	if restored.IsPrivate {
+		t.Error("Restored node should be public-only")
+	}
+
+	if !bytes.Equal(restored.PubKey, pubNode.PubKey) {
+		t.Error("Restored public key doesn't match")
 	}
 }

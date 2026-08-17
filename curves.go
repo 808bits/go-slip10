@@ -126,7 +126,6 @@ func deriveWeierstrassPublicChild(pubKey, chainCode []byte, index uint32, curve 
 
 	iLBig := new(big.Int)
 
-	// Parse parental public key
 	x, y, err := parsePubKey(pubKey)
 	if err != nil {
 		return nil, nil, err
